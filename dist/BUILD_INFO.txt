@@ -1,0 +1,8 @@
+Product: Trails in the Sky 2nd Chapter Demo Loose File Loader
+Build configuration: Release|x64
+Built: 2026-08-22
+Upstream commit: 04e898e369e3019d5aa2cb13a7209de39c643a4a
+Target Steam Build ID: 24831051
+Target sora_2nd.exe SHA-256: DB7016EBDAB7F6AFBF45DCB9CC78FA2C5E9F4B62CB48AAC3487F2707498C0617
+xinput1_4.dll SHA-256: D770214B0101F2F14468FA23AEBE02A85731424A69E2A30BD5CE5D11A02D9AD4
+Validation: static signatures, PE imports/exports, and build only; no game runtime test yet.

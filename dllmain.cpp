@@ -18,7 +18,7 @@ std::string g_localeSuffix;
 std::mutex g_localeMutex;
 
 void InitLogFile() {
-    gLogFile = _fsopen("console.log", "w", _SH_DENYNO);
+    gLogFile = _fsopen("sora2looseload.log", "w", _SH_DENYNO);
     if (gLogFile) {
         fprintf(gLogFile, "---- Log Started ----\n");
         fflush(gLogFile);
@@ -47,7 +47,9 @@ bool FileExistsOnDisk(const char* path) {
 
 uintptr_t FindPattern(uintptr_t base, DWORD size, const char* pattern, const char* mask) {
     size_t patternLength = strlen(mask);
-    for (uintptr_t i = 0; i < size - patternLength; i++) {
+    if (patternLength == 0 || patternLength > size)
+        return 0;
+    for (uintptr_t i = 0; i <= size - patternLength; i++) {
         bool found = true;
         for (uintptr_t j = 0; j < patternLength; j++) {
             if (mask[j] != '?' && pattern[j] != *(char*)(base + i + j)) {
@@ -59,6 +61,32 @@ uintptr_t FindPattern(uintptr_t base, DWORD size, const char* pattern, const cha
             return base + i;
     }
     return 0;
+}
+
+uintptr_t FindUniquePattern(uintptr_t base, DWORD size, const char* pattern, const char* mask, size_t* matchCount) {
+    const size_t patternLength = strlen(mask);
+    uintptr_t result = 0;
+    size_t count = 0;
+
+    if (patternLength != 0 && patternLength <= size) {
+        for (uintptr_t i = 0; i <= size - patternLength; i++) {
+            bool found = true;
+            for (uintptr_t j = 0; j < patternLength; j++) {
+                if (mask[j] != '?' && pattern[j] != *(char*)(base + i + j)) {
+                    found = false;
+                    break;
+                }
+            }
+            if (found) {
+                result = base + i;
+                ++count;
+            }
+        }
+    }
+
+    if (matchCount)
+        *matchCount = count;
+    return count == 1 ? result : 0;
 }
 
 typedef __int64(__fastcall* InitialFileCheck_t)(__int64 a1, const char* a2, unsigned int a3, unsigned int a4, unsigned __int16 a5);
@@ -267,8 +295,16 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID) {
             GetModuleInformation(GetCurrentProcess(), (HMODULE)base, &moduleInfo, sizeof(MODULEINFO));
             DWORD moduleSize = moduleInfo.SizeOfImage;
 
-            const char* initialFileCheckSig_GLB = "\x48\x89\x5C\x24\x20\x55\x56\x57\x41\x56\x41\x57\x48\x8D\xAC\x24\x90\xFC\xFF\xFF";
-            const char* initialFileCheckMask_GLB = "xxxxxxxxxxxxxxxxxxxx";
+            // The old 20-byte prologue occurs twice in the 2nd Chapter Demo.
+            // Extend through the ABI-defining register moves, while wildcarding
+            // only the RIP-relative security-cookie displacement.
+            const char* initialFileCheckSig_GLB =
+                "\x48\x89\x5C\x24\x20\x55\x56\x57\x41\x56\x41\x57\x48\x8D\xAC\x24"
+                "\x90\xFC\xFF\xFF\x48\x81\xEC\x70\x04\x00\x00\x48\x8B\x05\x00\x00"
+                "\x00\x00\x48\x33\xC4\x48\x89\x85\x60\x03\x00\x00\x41\x8B\xF1\x45"
+                "\x8B\xF8\x48\x8B\xDA\x48\x8B\xF9\x44\x89\x49\x50";
+            const char* initialFileCheckMask_GLB =
+                "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx????xxxxxxxxxxxxxxxxxxxxxxxxxx";
             const char* initialFileCheckSig_CLE = "\x48\x89\x5C\x24\x20\x55\x56\x57\x41\x56\x41\x57\x48\x81\xEC\x60\x02\x00\x00";
             const char* initialFileCheckMask_CLE = "xxxxxxxxxxxxxxxxxxx";
             const char* debugLoggerSig = "\x83\xF9\x02\x0F\x8C\x82\x00\x00\x00\x4C\x89\x4C\x24\x20\x53\x57";
@@ -277,15 +313,20 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID) {
             const char* localeHandlerMask = "xxxxxxxxxxxxxxxxxxxxx";
 
             Log("Scanning for signatures...");
-            uintptr_t debugLoggerAddr = FindPattern(base, moduleSize, debugLoggerSig, debugLoggerMask);
-            uintptr_t initialFileCheckAddr = FindPattern(base, moduleSize, initialFileCheckSig_GLB, initialFileCheckMask_GLB);
-            if (!initialFileCheckAddr)
-                initialFileCheckAddr = FindPattern(base, moduleSize, initialFileCheckSig_CLE, initialFileCheckMask_CLE);
-            uintptr_t localeHandlerAddr = FindPattern(base, moduleSize, localeHandlerSig, localeHandlerMask);
+            size_t initialMatches = 0;
+            size_t debugMatches = 0;
+            size_t localeMatches = 0;
+            uintptr_t debugLoggerAddr = FindUniquePattern(base, moduleSize, debugLoggerSig, debugLoggerMask, &debugMatches);
+            uintptr_t initialFileCheckAddr = FindUniquePattern(base, moduleSize, initialFileCheckSig_GLB, initialFileCheckMask_GLB, &initialMatches);
+            if (!initialFileCheckAddr && initialMatches == 0)
+                initialFileCheckAddr = FindUniquePattern(base, moduleSize, initialFileCheckSig_CLE, initialFileCheckMask_CLE, &initialMatches);
+            uintptr_t localeHandlerAddr = FindUniquePattern(base, moduleSize, localeHandlerSig, localeHandlerMask, &localeMatches);
 
             if (!initialFileCheckAddr || !debugLoggerAddr || !localeHandlerAddr) {
                 Log("Aborting due to missing signatures.");
-                Log("InitialFileCheck: %p, DebugLogger: %p, LocaleHandler: %p", (void*)initialFileCheckAddr, (void*)debugLoggerAddr, (void*)localeHandlerAddr);
+                Log("InitialFileCheck: %p (%zu matches), DebugLogger: %p (%zu matches), LocaleHandler: %p (%zu matches)",
+                    (void*)initialFileCheckAddr, initialMatches, (void*)debugLoggerAddr, debugMatches,
+                    (void*)localeHandlerAddr, localeMatches);
                 return;
             }
 
@@ -293,12 +334,25 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID) {
             oDebugLogger = (DebugLogger_t)debugLoggerAddr;
             oLocaleHandler = (LocaleHandler_t)localeHandlerAddr;
 
-            DetourTransactionBegin();
-            DetourUpdateThread(GetCurrentThread());
-            DetourAttach((void**)&oInitialFileCheck, InitialFileCheck);
-            DetourAttach((void**)&oDebugLogger, DebugLogger);
-            DetourAttach((void**)&oLocaleHandler, hkLocaleHandler);
-            DetourTransactionCommit();
+            LONG result = DetourTransactionBegin();
+            if (result == NO_ERROR)
+                result = DetourUpdateThread(GetCurrentThread());
+            if (result == NO_ERROR)
+                result = DetourAttach((void**)&oInitialFileCheck, InitialFileCheck);
+            if (result == NO_ERROR)
+                result = DetourAttach((void**)&oDebugLogger, DebugLogger);
+            if (result == NO_ERROR)
+                result = DetourAttach((void**)&oLocaleHandler, hkLocaleHandler);
+            if (result != NO_ERROR) {
+                DetourTransactionAbort();
+                Log("Failed to attach detours: %ld", result);
+                return;
+            }
+            result = DetourTransactionCommit();
+            if (result != NO_ERROR) {
+                Log("Failed to commit detours: %ld", result);
+                return;
+            }
 
             Log("All detours attached successfully.");
             }).detach();
