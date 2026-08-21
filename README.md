@@ -64,3 +64,25 @@ Trails in the Sky 2nd Chapter Demo\script\scena\example.dat
 Locale-prefixed paths must be confirmed from `sora2looseload.log` during the
 first runtime test. The loader expects decompressed loose files; LZ4 Frame is a
 PAC storage detail and should not be retained in the loose DDS itself.
+
+## DDS compatibility notes
+
+A `.dds` extension does not guarantee decoded DDS content. Check the first four bytes:
+
+```text
+44 44 53 20  DDS file, suitable for loose loading
+04 22 4D 18  LZ4 Frame, decompress before loose loading
+```
+
+The loader passes a path to the game's normal file reader; it does not decompress
+PAC payloads. Use the default mode of `tools/fpac/sky_extract_pac.py` and do not
+use `--stored` for loose files.
+
+```text
+chr5000_c00.mdl -> estell_1st_a/q/n.dds + estell_1st_body_a.dds
+chr5000_c45.mdl -> estell_dtb_a/q/n.dds + estell_body_a.dds
+chr5000_c10.mdl -> neither custom texture set
+```
+
+The decoded `estell_1st_*` files are BC7 and match official 2nd Demo character
+texture dimensions and mip counts. The decoded `estell_dtb_*` files are valid DXT5 DDS.
