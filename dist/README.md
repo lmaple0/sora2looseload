@@ -65,18 +65,16 @@ Locale-prefixed paths must be confirmed from `sora2looseload.log` during the
 first runtime test. The loader expects decompressed loose files; LZ4 Frame is a
 PAC storage detail and should not be retained in the loose DDS itself.
 
-## DDS compatibility notes
+## Texture compatibility findings
 
-A `.dds` extension does not guarantee decoded DDS content. Check the first four bytes:
+Do not replace the current LZ4 loose textures with directly decompressed DDS files.
+That experiment caused the `c45` body materials to disappear while the head and hair
+remained visible. All eight files were restored byte-for-byte from backup.
 
-```text
-44 44 53 20  DDS file, suitable for loose loading
-04 22 4D 18  LZ4 Frame, decompress before loose loading
-```
-
-The loader passes a path to the game's normal file reader; it does not decompress
-PAC payloads. Use the default mode of `tools/fpac/sky_extract_pac.py` and do not
-use `--stored` for loose files.
+`44 44 53 20` confirms only that a file is structurally a DDS; it does not prove that
+the 2nd Demo resource path, texture format, alpha semantics, and model material flags
+are compatible. Keep the original `04 22 4D 18` LZ4 Frames until those layers are
+validated together.
 
 ```text
 chr5000_c00.mdl -> estell_1st_a/q/n.dds + estell_1st_body_a.dds
@@ -84,5 +82,6 @@ chr5000_c45.mdl -> estell_dtb_a/q/n.dds + estell_body_a.dds
 chr5000_c10.mdl -> neither custom texture set
 ```
 
-The decoded `estell_1st_*` files are BC7 and match official 2nd Demo character
-texture dimensions and mip counts. The decoded `estell_dtb_*` files are valid DXT5 DDS.
+Offline inspection shows that `estell_1st_*` decode to BC7 with official 2nd Demo
+dimensions and mip counts, while `estell_dtb_*` decode to DXT5. This is structural
+evidence only, not runtime compatibility proof.
