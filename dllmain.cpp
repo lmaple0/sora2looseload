@@ -1,31 +1,39 @@
 #include "pch.h"
 #include "detours.h"
 #include <windows.h>
-#include <thread>
 #include <cstdio>
-#include <xinput.h>
-#include <string>
 #include <psapi.h>
 #include <atomic>
-#include <mutex>
 #include <share.h>
 #include <cstdarg>
 
 char g_gameDir[MAX_PATH] = {};
 FILE* gLogFile = nullptr;
-std::atomic<unsigned __int16> g_currentLocale = 0;
-std::string g_localeSuffix;
-std::mutex g_localeMutex;
+std::atomic<__int64> g_localeMgr{ 0 };
 
-void InitLogFile() {
-    gLogFile = _fsopen("sora2looseload.log", "w", _SH_DENYNO);
+bool InitLogFile() {
+    char enabled[8] = {};
+    if (GetEnvironmentVariableA("SORA2LOOSELOAD_LOG", enabled, sizeof(enabled)) == 0 ||
+        strcmp(enabled, "1") != 0) {
+        return false;
+    }
+
+    char logPath[MAX_PATH] = {};
+    if (sprintf_s(logPath, "%ssora2looseload.log", g_gameDir) < 0)
+        return false;
+
+    gLogFile = _fsopen(logPath, "w", _SH_DENYNO);
     if (gLogFile) {
         fprintf(gLogFile, "---- Log Started ----\n");
         fflush(gLogFile);
     }
+    return gLogFile != nullptr;
 }
 
 void Log(const char* fmt, ...) {
+    if (!gLogFile)
+        return;
+
     char buf[2048];
     va_list args;
     va_start(args, fmt);
@@ -33,34 +41,13 @@ void Log(const char* fmt, ...) {
     buf[sizeof(buf) - 1] = '\0';
     va_end(args);
 
-    printf("%s\n", buf);
-    if (gLogFile) {
-        fprintf(gLogFile, "%s\n", buf);
-        fflush(gLogFile);
-    }
+    fprintf(gLogFile, "%s\n", buf);
+    fflush(gLogFile);
 }
 
 bool FileExistsOnDisk(const char* path) {
     DWORD attr = GetFileAttributesA(path);
     return (attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY));
-}
-
-uintptr_t FindPattern(uintptr_t base, DWORD size, const char* pattern, const char* mask) {
-    size_t patternLength = strlen(mask);
-    if (patternLength == 0 || patternLength > size)
-        return 0;
-    for (uintptr_t i = 0; i <= size - patternLength; i++) {
-        bool found = true;
-        for (uintptr_t j = 0; j < patternLength; j++) {
-            if (mask[j] != '?' && pattern[j] != *(char*)(base + i + j)) {
-                found = false;
-                break;
-            }
-        }
-        if (found)
-            return base + i;
-    }
-    return 0;
 }
 
 uintptr_t FindUniquePattern(uintptr_t base, DWORD size, const char* pattern, const char* mask, size_t* matchCount) {
@@ -69,7 +56,16 @@ uintptr_t FindUniquePattern(uintptr_t base, DWORD size, const char* pattern, con
     size_t count = 0;
 
     if (patternLength != 0 && patternLength <= size) {
+        size_t anchor = 0;
+        while (anchor < patternLength && mask[anchor] == '?')
+            ++anchor;
+
         for (uintptr_t i = 0; i <= size - patternLength; i++) {
+            if (anchor < patternLength &&
+                *(const unsigned char*)(base + i + anchor) != (unsigned char)pattern[anchor]) {
+                continue;
+            }
+
             bool found = true;
             for (uintptr_t j = 0; j < patternLength; j++) {
                 if (mask[j] != '?' && pattern[j] != *(char*)(base + i + j)) {
@@ -89,6 +85,37 @@ uintptr_t FindUniquePattern(uintptr_t base, DWORD size, const char* pattern, con
     return count == 1 ? result : 0;
 }
 
+bool BuildLoosePath(const char* relativePath, char* fullPath, size_t fullPathSize) {
+    if (!relativePath || !relativePath[0] || !g_gameDir[0] ||
+        relativePath[0] == '\\' || relativePath[0] == '/' ||
+        (relativePath[1] == ':' &&
+            ((relativePath[0] >= 'A' && relativePath[0] <= 'Z') ||
+             (relativePath[0] >= 'a' && relativePath[0] <= 'z')))) {
+        return false;
+    }
+
+    if (sprintf_s(fullPath, fullPathSize, "%s%s", g_gameDir, relativePath) < 0)
+        return false;
+
+    for (char* p = fullPath; *p; ++p) {
+        if (*p == '/')
+            *p = '\\';
+    }
+    return true;
+}
+
+bool TryLooseFile(const char* relativePath, char* fullPath, size_t fullPathSize, const char* kind) {
+    if (!BuildLoosePath(relativePath, fullPath, fullPathSize))
+        return false;
+
+    Log("[MOD] Checking %s loose file: '%s'", kind, fullPath);
+    if (!FileExistsOnDisk(fullPath))
+        return false;
+
+    Log("[MOD] Found %s loose file: '%s'", kind, fullPath);
+    return true;
+}
+
 typedef __int64(__fastcall* InitialFileCheck_t)(__int64 a1, const char* a2, unsigned int a3, unsigned int a4, unsigned __int16 a5);
 typedef void(__fastcall* DebugLogger_t)(int a1, __int64 a2, __int64 a3, const char* a4, ...);
 typedef void(__fastcall* LocaleHandler_t)(__int64 mgr, char* dest, unsigned __int16* locale, char* src, int zero);
@@ -96,8 +123,6 @@ typedef void(__fastcall* LocaleHandler_t)(__int64 mgr, char* dest, unsigned __in
 InitialFileCheck_t oInitialFileCheck = nullptr;
 DebugLogger_t oDebugLogger = nullptr;
 LocaleHandler_t oLocaleHandler = nullptr;
-
-__int64 g_localeMgr = 0;
 
 __int64 __fastcall InitialFileCheck(__int64 a1, const char* a2, unsigned int a3, unsigned int a4, unsigned __int16 a5)
 {
@@ -112,111 +137,22 @@ __int64 __fastcall InitialFileCheck(__int64 a1, const char* a2, unsigned int a3,
     static thread_local char localizedPath[MAX_PATH];
     const char* finalPath = a2;
 
-    size_t gameDirLen = 0;
-    bool gameDirHasSlash = false;
-    if (g_gameDir[0]) {
-        gameDirLen = strnlen_s(g_gameDir, MAX_PATH);
-        if (gameDirLen > 0) {
-            char last = g_gameDir[gameDirLen - 1];
-            gameDirHasSlash = (last == '\\' || last == '/');
-        }
-    }
-
-    auto normalize_to_backslashes = [](char* s) {
-        for (; *s; ++s) if (*s == '/') *s = '\\';
-        };
-
-    bool hasLocaleSuffix = false;
-
-    if (oLocaleHandler && g_localeMgr)
+    const __int64 localeMgr = g_localeMgr.load(std::memory_order_acquire);
+    if (oLocaleHandler && localeMgr)
     {
         localizedPath[0] = '\0';
-        oLocaleHandler(g_localeMgr, localizedPath, (unsigned __int16*)&a5, (char*)a2, 0);
+        oLocaleHandler(localeMgr, localizedPath, (unsigned __int16*)&a5, (char*)a2, 0);
 
-        if (localizedPath[0])
-        {
-            char srcNorm[MAX_PATH];
-            char destNorm[MAX_PATH];
-            strncpy_s(srcNorm, sizeof(srcNorm), a2, _TRUNCATE);
-            strncpy_s(destNorm, sizeof(destNorm), localizedPath, _TRUNCATE);
-
-            for (char* p = srcNorm; *p; ++p) if (*p == '\\') *p = '/';
-            for (char* p = destNorm; *p; ++p) if (*p == '\\') *p = '/';
-
-            const char* slashSrc = strchr(srcNorm, '/');
-            const char* slashDest = strchr(destNorm, '/');
-
-            if (slashSrc && slashDest)
-            {
-                size_t srcDirLen = (size_t)(slashSrc - srcNorm);
-                size_t destDirLen = (size_t)(slashDest - destNorm);
-                if (destDirLen > srcDirLen && strncmp(destNorm, srcNorm, srcDirLen) == 0) {
-                    size_t suffixLen = destDirLen - srcDirLen;
-                    if (suffixLen < MAX_PATH) {
-                        char currentSuffix[MAX_PATH] = {};
-                        strncpy_s(currentSuffix, sizeof(currentSuffix), destNorm + srcDirLen, suffixLen);
-                        if (strlen(currentSuffix) > 0) {
-                            std::lock_guard<std::mutex> lock(g_localeMutex);
-                            g_localeSuffix = currentSuffix;
-                            hasLocaleSuffix = true;
-                            Log("[MOD] >>> Detected locale suffix: '%s'", currentSuffix);
-                        }
-                    }
-                }
-            }
-
-            if (hasLocaleSuffix)
-            {
-                char fullPath[MAX_PATH];
-                if (gameDirLen && gameDirHasSlash)
-                    snprintf(fullPath, sizeof(fullPath), "%s%s", g_gameDir, localizedPath);
-                else if (gameDirLen)
-                    snprintf(fullPath, sizeof(fullPath), "%s\\%s", g_gameDir, localizedPath);
-                else
-                    snprintf(fullPath, sizeof(fullPath), "%s", localizedPath);
-
-                normalize_to_backslashes(fullPath);
-
-                Log("[MOD] Checking localized loose file: '%s'", fullPath);
-
-                if (FileExistsOnDisk(fullPath))
-                {
-                    Log("[MOD] Found localized loose file! Using '%s'", fullPath);
-                    strncpy_s(safeFullPath, sizeof(safeFullPath), fullPath, _TRUNCATE);
-                    finalPath = safeFullPath;
-                }
-                else
-                {
-                    finalPath = localizedPath;
-                }
-            }
-        }
-        else
-        {
+        if (localizedPath[0] && _stricmp(localizedPath, a2) != 0 &&
+            TryLooseFile(localizedPath, safeFullPath, sizeof(safeFullPath), "localized")) {
+            finalPath = safeFullPath;
+        } else if (!localizedPath[0]) {
             Log("[DEBUG] LocaleHandler returned empty path for '%s'", a2);
         }
     }
 
-    if (finalPath == a2)
-    {
-        char fullPathToCheck[MAX_PATH];
-        if (gameDirLen && gameDirHasSlash)
-            snprintf(fullPathToCheck, sizeof(fullPathToCheck), "%s%s", g_gameDir, a2);
-        else if (gameDirLen)
-            snprintf(fullPathToCheck, sizeof(fullPathToCheck), "%s\\%s", g_gameDir, a2);
-        else
-            snprintf(fullPathToCheck, sizeof(fullPathToCheck), "%s", a2);
-
-        normalize_to_backslashes(fullPathToCheck);
-
-        Log("[MOD] Checking standard loose file: '%s'", fullPathToCheck);
-
-        if (FileExistsOnDisk(fullPathToCheck))
-        {
-            Log("[MOD] Standard loose file found: '%s'", fullPathToCheck);
-            strncpy_s(safeFullPath, sizeof(safeFullPath), fullPathToCheck, _TRUNCATE);
-            finalPath = safeFullPath;
-        }
+    if (finalPath == a2 && TryLooseFile(a2, safeFullPath, sizeof(safeFullPath), "standard")) {
+        finalPath = safeFullPath;
     }
 
     Log("[MOD] Passing '%s' to original InitialFileCheck", finalPath);
@@ -226,7 +162,7 @@ __int64 __fastcall InitialFileCheck(__int64 a1, const char* a2, unsigned int a3,
 
 
 void __fastcall DebugLogger(int a1, __int64 a2, __int64 a3, const char* a4, ...) {
-    if (!a4) return;
+    if (!gLogFile || !a4) return;
     char buffer[4096] = { 0 };
     va_list va;
     va_start(va, a4);
@@ -239,61 +175,25 @@ void __fastcall DebugLogger(int a1, __int64 a2, __int64 a3, const char* a4, ...)
 }
 
 void __fastcall hkLocaleHandler(__int64 mgr, char* dest, unsigned __int16* locale, char* src, int zero) {
-    unsigned __int16 loc = locale ? *locale : 0;
-    g_currentLocale.store(loc);
-    g_localeMgr = mgr;
+    g_localeMgr.store(mgr, std::memory_order_release);
     oLocaleHandler(mgr, dest, locale, src, zero);
-
-    if (src && dest && dest[0] != '\0') {
-        char s_src[MAX_PATH];
-        char s_dest[MAX_PATH];
-        strncpy_s(s_src, sizeof(s_src), src, _TRUNCATE);
-        strncpy_s(s_dest, sizeof(s_dest), dest, _TRUNCATE);
-        for (char* p = s_src; *p; ++p) if (*p == '\\') *p = '/';
-        for (char* p = s_dest; *p; ++p) if (*p == '\\') *p = '/';
-
-        const char* firstSlashSrc = strchr(s_src, '/');
-        const char* firstSlashDest = strchr(s_dest, '/');
-
-        if (firstSlashSrc && firstSlashDest) {
-            size_t srcDirLen = (size_t)(firstSlashSrc - s_src);
-            size_t destDirLen = (size_t)(firstSlashDest - s_dest);
-            if (destDirLen > srcDirLen && strncmp(s_dest, s_src, srcDirLen) == 0) {
-                size_t suffixLen = destDirLen - srcDirLen;
-                if (suffixLen < MAX_PATH) {
-                    char currentSuffix[MAX_PATH] = {};
-                    strncpy_s(currentSuffix, sizeof(currentSuffix), s_dest + srcDirLen, suffixLen);
-                    {
-                        std::lock_guard<std::mutex> lock(g_localeMutex);
-                        g_localeSuffix = currentSuffix;
-                    }
-                    Log("[MOD] >>> Detected locale suffix: '%s'", currentSuffix);
-                }
-            }
-        }
-    }
 }
 
-BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID) {
-    if (reason == DLL_PROCESS_ATTACH) {
-        DisableThreadLibraryCalls(hModule);
-        GetModuleFileNameA(NULL, g_gameDir, MAX_PATH);
-        char* lastSlash = strrchr(g_gameDir, '\\');
-        if (lastSlash)
-            *(lastSlash + 1) = '\0';
+DWORD WINAPI InitializeHooks(LPVOID) {
+    const bool loggingEnabled = InitLogFile();
 
-        std::thread([hModule] {
-            InitLogFile();
+    uintptr_t base = (uintptr_t)GetModuleHandleA(NULL);
+    if (!base) {
+        Log("Failed to get module handle.");
+        return 0;
+    }
 
-            uintptr_t base = (uintptr_t)GetModuleHandleA(NULL);
-            if (!base) {
-                Log("Failed to get module handle.");
-                return;
-            }
-
-            MODULEINFO moduleInfo;
-            GetModuleInformation(GetCurrentProcess(), (HMODULE)base, &moduleInfo, sizeof(MODULEINFO));
-            DWORD moduleSize = moduleInfo.SizeOfImage;
+    MODULEINFO moduleInfo = {};
+    if (!GetModuleInformation(GetCurrentProcess(), (HMODULE)base, &moduleInfo, sizeof(moduleInfo))) {
+        Log("Failed to query the main module.");
+        return 0;
+    }
+    DWORD moduleSize = moduleInfo.SizeOfImage;
 
             // The old 20-byte prologue occurs twice in the 2nd Chapter Demo.
             // Extend through the ABI-defining register moves, while wildcarding
@@ -312,50 +212,73 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID) {
             const char* localeHandlerSig = "\x40\x55\x53\x56\x57\x41\x54\x41\x55\x41\x56\x41\x57\x48\x8D\xAC\x24\xA8\xFE\xFF\xFF";
             const char* localeHandlerMask = "xxxxxxxxxxxxxxxxxxxxx";
 
-            Log("Scanning for signatures...");
-            size_t initialMatches = 0;
-            size_t debugMatches = 0;
-            size_t localeMatches = 0;
-            uintptr_t debugLoggerAddr = FindUniquePattern(base, moduleSize, debugLoggerSig, debugLoggerMask, &debugMatches);
-            uintptr_t initialFileCheckAddr = FindUniquePattern(base, moduleSize, initialFileCheckSig_GLB, initialFileCheckMask_GLB, &initialMatches);
-            if (!initialFileCheckAddr && initialMatches == 0)
-                initialFileCheckAddr = FindUniquePattern(base, moduleSize, initialFileCheckSig_CLE, initialFileCheckMask_CLE, &initialMatches);
-            uintptr_t localeHandlerAddr = FindUniquePattern(base, moduleSize, localeHandlerSig, localeHandlerMask, &localeMatches);
+    Log("Scanning for signatures...");
+    size_t initialMatches = 0;
+    size_t debugMatches = 0;
+    size_t localeMatches = 0;
+    uintptr_t debugLoggerAddr = 0;
+    if (loggingEnabled)
+        debugLoggerAddr = FindUniquePattern(base, moduleSize, debugLoggerSig, debugLoggerMask, &debugMatches);
+    uintptr_t initialFileCheckAddr = FindUniquePattern(base, moduleSize, initialFileCheckSig_GLB, initialFileCheckMask_GLB, &initialMatches);
+    if (!initialFileCheckAddr && initialMatches == 0)
+        initialFileCheckAddr = FindUniquePattern(base, moduleSize, initialFileCheckSig_CLE, initialFileCheckMask_CLE, &initialMatches);
+    uintptr_t localeHandlerAddr = FindUniquePattern(base, moduleSize, localeHandlerSig, localeHandlerMask, &localeMatches);
 
-            if (!initialFileCheckAddr || !debugLoggerAddr || !localeHandlerAddr) {
-                Log("Aborting due to missing signatures.");
-                Log("InitialFileCheck: %p (%zu matches), DebugLogger: %p (%zu matches), LocaleHandler: %p (%zu matches)",
-                    (void*)initialFileCheckAddr, initialMatches, (void*)debugLoggerAddr, debugMatches,
-                    (void*)localeHandlerAddr, localeMatches);
-                return;
-            }
+    if (!initialFileCheckAddr || !localeHandlerAddr) {
+        Log("Aborting due to missing core signatures.");
+        Log("InitialFileCheck: %p (%zu matches), DebugLogger: %p (%zu matches), LocaleHandler: %p (%zu matches)",
+            (void*)initialFileCheckAddr, initialMatches, (void*)debugLoggerAddr, debugMatches,
+            (void*)localeHandlerAddr, localeMatches);
+        return 0;
+    }
+    if (loggingEnabled && !debugLoggerAddr)
+        Log("DebugLogger signature unavailable; continuing with loader diagnostics only.");
 
-            oInitialFileCheck = (InitialFileCheck_t)initialFileCheckAddr;
-            oDebugLogger = (DebugLogger_t)debugLoggerAddr;
-            oLocaleHandler = (LocaleHandler_t)localeHandlerAddr;
+    oInitialFileCheck = (InitialFileCheck_t)initialFileCheckAddr;
+    oLocaleHandler = (LocaleHandler_t)localeHandlerAddr;
+    if (debugLoggerAddr)
+        oDebugLogger = (DebugLogger_t)debugLoggerAddr;
 
-            LONG result = DetourTransactionBegin();
-            if (result == NO_ERROR)
-                result = DetourUpdateThread(GetCurrentThread());
-            if (result == NO_ERROR)
-                result = DetourAttach((void**)&oInitialFileCheck, InitialFileCheck);
-            if (result == NO_ERROR)
-                result = DetourAttach((void**)&oDebugLogger, DebugLogger);
-            if (result == NO_ERROR)
-                result = DetourAttach((void**)&oLocaleHandler, hkLocaleHandler);
-            if (result != NO_ERROR) {
-                DetourTransactionAbort();
-                Log("Failed to attach detours: %ld", result);
-                return;
-            }
-            result = DetourTransactionCommit();
-            if (result != NO_ERROR) {
-                Log("Failed to commit detours: %ld", result);
-                return;
-            }
+    LONG result = DetourTransactionBegin();
+    if (result == NO_ERROR)
+        result = DetourUpdateThread(GetCurrentThread());
+    if (result == NO_ERROR)
+        result = DetourAttach((void**)&oInitialFileCheck, InitialFileCheck);
+    if (result == NO_ERROR && debugLoggerAddr)
+        result = DetourAttach((void**)&oDebugLogger, DebugLogger);
+    if (result == NO_ERROR)
+        result = DetourAttach((void**)&oLocaleHandler, hkLocaleHandler);
+    if (result != NO_ERROR) {
+        DetourTransactionAbort();
+        Log("Failed to attach detours: %ld", result);
+        return 0;
+    }
+    result = DetourTransactionCommit();
+    if (result != NO_ERROR) {
+        Log("Failed to commit detours: %ld", result);
+        return 0;
+    }
 
-            Log("All detours attached successfully.");
-            }).detach();
+    Log("All detours attached successfully.");
+    return 0;
+}
+
+BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID) {
+    if (reason == DLL_PROCESS_ATTACH) {
+        DisableThreadLibraryCalls(hModule);
+        const DWORD pathLength = GetModuleFileNameA(NULL, g_gameDir, MAX_PATH);
+        if (pathLength == 0 || pathLength >= MAX_PATH)
+            g_gameDir[0] = '\0';
+
+        char* lastSlash = strrchr(g_gameDir, '\\');
+        if (lastSlash)
+            *(lastSlash + 1) = '\0';
+        else
+            g_gameDir[0] = '\0';
+
+        HANDLE thread = CreateThread(nullptr, 0, InitializeHooks, nullptr, 0, nullptr);
+        if (thread)
+            CloseHandle(thread);
     }
     return TRUE;
 }

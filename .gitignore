@@ -31,6 +31,10 @@ x86/
 bld/
 [Oo]bj/
 [Oo]ut/
+.codex-tmp/
+.research-work/
+dist/*.7z
+dist/*.zip
 [Ll]og/
 [Ll]ogs/
 

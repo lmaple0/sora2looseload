@@ -1,8 +1,12 @@
-Product: Trails in the Sky 2nd Chapter Demo Loose File Loader
+Product: Trails in the Sky 2nd Chapter Loose File Loader
 Build configuration: Release|x64
-Built: 2026-08-22
+Built: 2026-09-17
 Upstream commit: 04e898e369e3019d5aa2cb13a7209de39c643a4a
-Target Steam Build ID: 24831051
-Target sora_2nd.exe SHA-256: DB7016EBDAB7F6AFBF45DCB9CC78FA2C5E9F4B62CB48AAC3487F2707498C0617
-xinput1_4.dll SHA-256: D770214B0101F2F14468FA23AEBE02A85731424A69E2A30BD5CE5D11A02D9AD4
-Validation: static signatures, PE imports/exports, and build only; no game runtime test yet.
+Target Steam Build ID: 25340742
+Target sora_2nd.exe version: 1.3.1.0
+Target sora_2nd.exe SHA-256: 485EFF96B37B11860F39C2D1A7390D6C91F4046E79519A85076E1CA4CDB6B616
+xinput1_4.dll SHA-256: 9BEFCF90983F62CB16F21889190649A9113FE788E2DE40EEDE1EFC6392D52C93
+Default file logging: disabled; set SORA2LOOSELOAD_LOG=1 to enable sora2looseload.log.
+EXE policy: keep the official Steam executable; do not combine with an embedded loose-loader patch.
+Validation: clean Release|x64 rebuild, unit tests, target signatures, and PE exports.
+Runtime: a prior DLL passed the release-game test; this artifact still requires a fresh in-game smoke test.

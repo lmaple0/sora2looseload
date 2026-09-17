@@ -1,0 +1,42 @@
+name: build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  release-x64:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install verifier dependency
+        run: python -m pip install pefile
+
+      - name: Run unit tests
+        run: python -m unittest discover -s tools -p "test_*.py" -v
+
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Build Release x64
+        run: msbuild sora1looseload.sln /t:Rebuild /p:Configuration=Release /p:Platform=x64 /m
+
+      - name: Verify XInput proxy
+        run: python tools/verify_proxy.py x64/Release/xinput1_4.dll
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sora2looseload-release-x64
+          path: |
+            x64/Release/xinput1_4.dll
+            README.md
+            README.zh-CN.md
+            LICENSE

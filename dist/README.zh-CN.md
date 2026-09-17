@@ -1,0 +1,49 @@
+# 空之轨迹 the 2nd 松散文件加载器
+
+这是 [Hinkiii/sora1looseload](https://github.com/Hinkiii/sora1looseload)
+面向 Steam 版《空之轨迹 the 2nd》的开源适配 fork。适配工作基于上游提交
+`04e898e369e3019d5aa2cb13a7209de39c643a4a`，遵循 MIT 许可证。
+
+## 重要边界
+
+- 保留 Steam 官方 `sora_2nd.exe`；本项目不会修改、替换或分发游戏 EXE。
+- 不要与已经内嵌其他松散文件加载器的修改版 EXE 混用。两者会争用同一个
+  `InitialFileCheck` 入口，验证工具会主动拒绝这种目标。
+- 语音 MOD 只需部署匹配的 `voice`、`table`/`table_sc` 与
+  `script`/`script_sc` 资源，本 DLL 负责从游戏根目录优先读取这些松散文件。
+- DLL 不会改写 PAC，也不会改动或删除松散资源。
+
+## 安装
+
+1. 先通过 Steam 恢复官方 `sora_2nd.exe`。
+2. 如果游戏根目录已有其他 MOD 提供的 `xinput1_4.dll`，先备份。
+3. 将 `dist\xinput1_4.dll` 复制到 `sora_2nd.exe` 同目录。
+4. 按游戏内部相对路径放置 MOD 文件，例如：
+
+```text
+Trails in the Sky 2nd Chapter\table_sc\t_voice.tbl
+Trails in the Sky 2nd Chapter\script_sc\scena\example.dat
+```
+
+5. 完全退出并重新启动游戏后测试。
+
+移除时删除本项目的 `xinput1_4.dll`，再恢复之前备份的同名 DLL（如果存在）。
+
+## 日志与验证
+
+默认不会创建日志。只有设置 `SORA2LOOSELOAD_LOG=1` 后，才会在游戏根目录
+生成 `sora2looseload.log`。
+
+```powershell
+py tools\verify_target.py "C:\Program Files (x86)\Steam\steamapps\common\Trails in the Sky 2nd Chapter\sora_2nd.exe"
+py tools\verify_target.py --with-log-hook "C:\Program Files (x86)\Steam\steamapps\common\Trails in the Sky 2nd Chapter\sora_2nd.exe"
+py tools\verify_proxy.py dist\xinput1_4.dll
+py -m unittest discover -s tools -p "test_*.py"
+```
+
+当前正式版验证目标：Steam Build ID `25340742`、文件版本 `1.3.1.0`、
+`sora_2nd.exe` SHA-256：
+`485EFF96B37B11860F39C2D1A7390D6C91F4046E79519A85076E1CA4CDB6B616`。
+
+静态验证和构建成功不等于游戏内验证。新构建仍应以一个可回滚的松散文件做
+实际读取测试。

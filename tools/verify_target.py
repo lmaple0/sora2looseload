@@ -36,11 +36,38 @@ PATTERNS = {
 
 
 def matches(data: bytes, pattern: bytes, mask: str) -> list[int]:
+    if len(pattern) != len(mask):
+        raise ValueError("pattern and mask lengths differ")
+    if not pattern or len(pattern) > len(data):
+        return []
+
+    fixed_runs = []
+    run_start = None
+    for index, mark in enumerate(mask + "?"):
+        if mark != "?" and run_start is None:
+            run_start = index
+        elif mark == "?" and run_start is not None:
+            fixed_runs.append((run_start, index))
+            run_start = None
+
+    if not fixed_runs:
+        return list(range(len(data) - len(pattern) + 1))
+
+    anchor_start, anchor_end = max(fixed_runs, key=lambda run: run[1] - run[0])
+    anchor = pattern[anchor_start:anchor_end]
     result = []
-    for offset in range(len(data) - len(pattern) + 1):
-        if all(mark == "?" or data[offset + index] == pattern[index]
-               for index, mark in enumerate(mask)):
+    search_from = 0
+    while True:
+        anchor_offset = data.find(anchor, search_from)
+        if anchor_offset < 0:
+            break
+        offset = anchor_offset - anchor_start
+        if 0 <= offset <= len(data) - len(pattern) and all(
+            mark == "?" or data[offset + index] == pattern[index]
+            for index, mark in enumerate(mask)
+        ):
             result.append(offset)
+        search_from = anchor_offset + 1
     return result
 
 
@@ -55,6 +82,11 @@ def file_offset_to_rva(pe: pefile.PE, offset: int) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("exe", type=Path)
+    parser.add_argument(
+        "--with-log-hook",
+        action="store_true",
+        help="also require the optional DebugLogger signature used by SORA2LOOSELOAD_LOG=1",
+    )
     args = parser.parse_args()
 
     data = args.exe.read_bytes()
@@ -78,12 +110,19 @@ def main() -> int:
         "machine": f"0x{pe.FILE_HEADER.Machine:X}",
         "patterns": found,
         "xinput1_4_ordinals": sorted(xinput),
+        "log_hook_required": args.with_log_hook,
     }
     print(json.dumps(report, indent=2))
 
-    valid = all(len(items) == 1 for items in found.values()) and sorted(xinput) == [2, 3]
+    required_patterns = ["initial_file_check", "locale_handler"]
+    if args.with_log_hook:
+        required_patterns.append("debug_logger")
+    valid = (
+        all(len(found[name]) == 1 for name in required_patterns)
+        and sorted(xinput) == [2, 3]
+    )
     if not valid:
-        print("Target rejected: signatures are not unique or XInput imports changed.",
+        print("Target rejected: required signatures are not unique or XInput imports changed.",
               file=sys.stderr)
         return 2
     return 0
