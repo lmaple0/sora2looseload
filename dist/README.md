@@ -8,6 +8,9 @@ started from upstream commit `04e898e369e3019d5aa2cb13a7209de39c643a4a`.
 
 License: MIT (see `LICENSE`)
 
+Microsoft Detours is included as a Git submodule and pinned to official
+`main` commit `adb07604aa56508448b95bf037c2a6d0d3b6831a` (2026-08-24).
+
 ## Why the original DLL is unsafe on the 2nd builds
 
 The original 20-byte `InitialFileCheck` signature occurs twice in the current

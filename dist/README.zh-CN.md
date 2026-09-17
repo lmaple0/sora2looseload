@@ -4,6 +4,9 @@
 面向 Steam 版《空之轨迹 the 2nd》的开源适配 fork。适配工作基于上游提交
 `04e898e369e3019d5aa2cb13a7209de39c643a4a`，遵循 MIT 许可证。
 
+Microsoft Detours 以 Git 子模块形式固定到官方 `main` 提交
+`adb07604aa56508448b95bf037c2a6d0d3b6831a`（2026-08-24），不会跟随浮动分支自动更新。
+
 ## 重要边界
 
 - 保留 Steam 官方 `sora_2nd.exe`；本项目不会修改、替换或分发游戏 EXE。
