@@ -34,8 +34,17 @@ Trails in the Sky 2nd Chapter\script_sc\scena\example.dat
 
 ## 日志与验证
 
-默认不会创建日志。只有设置 `SORA2LOOSELOAD_LOG=1` 后，才会在游戏根目录
-生成 `sora2looseload.log`。
+将 `sora2looseload.ini` 放在 `sora_2nd.exe` 同目录，通过以下配置开启日志：
+
+```ini
+[Logging]
+Enabled=1
+```
+
+发布包中的默认值为 `Enabled=0`，不会创建日志。环境变量
+`SORA2LOOSELOAD_LOG` 存在时优先级更高：值严格等于 `1` 时开启；值为 `0`、
+空值或其他内容时关闭。日志生成在游戏根目录的 `sora2looseload.log`，每次
+启动都会覆盖旧日志。
 
 ```powershell
 py tools\verify_target.py "C:\Program Files (x86)\Steam\steamapps\common\Trails in the Sky 2nd Chapter\sora_2nd.exe"
@@ -44,9 +53,10 @@ py tools\verify_proxy.py dist\xinput1_4.dll
 py -m unittest discover -s tools -p "test_*.py"
 ```
 
-当前正式版验证目标：Steam Build ID `25340742`、文件版本 `1.3.1.0`、
+当前正式版验证目标：Steam Build ID `25386012`、文件版本 `1.3.2.0`、
 `sora_2nd.exe` SHA-256：
-`485EFF96B37B11860F39C2D1A7390D6C91F4046E79519A85076E1CA4CDB6B616`。
+`D8B2911D1576216BDC22D070550E4F531E105DE7ED2981885849669F4ACF8AAF`。
+三个挂钩特征和 XInput 导入已静态验证；该版本仍需新的游戏内测试。
 
 静态验证和构建成功不等于游戏内验证。新构建仍应以一个可回滚的松散文件做
 实际读取测试。

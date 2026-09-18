@@ -40,6 +40,7 @@ jobs:
           name: sora2looseload-release-x64
           path: |
             x64/Release/xinput1_4.dll
+            dist/sora2looseload.ini
             README.md
             README.zh-CN.md
             LICENSE

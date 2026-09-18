@@ -11,12 +11,32 @@ char g_gameDir[MAX_PATH] = {};
 FILE* gLogFile = nullptr;
 std::atomic<__int64> g_localeMgr{ 0 };
 
-bool InitLogFile() {
+bool IsLoggingEnabled() {
     char enabled[8] = {};
-    if (GetEnvironmentVariableA("SORA2LOOSELOAD_LOG", enabled, sizeof(enabled)) == 0 ||
-        strcmp(enabled, "1") != 0) {
+    SetLastError(ERROR_SUCCESS);
+    const DWORD enabledLength = GetEnvironmentVariableA(
+        "SORA2LOOSELOAD_LOG", enabled, sizeof(enabled));
+    if (enabledLength != 0) {
+        return enabledLength < sizeof(enabled) && strcmp(enabled, "1") == 0;
+    }
+
+    // An explicitly empty environment variable disables logging and overrides
+    // the INI, just like any other value except the exact string "1".
+    if (GetLastError() != ERROR_ENVVAR_NOT_FOUND)
+        return false;
+
+    char configPath[MAX_PATH] = {};
+    if (!g_gameDir[0] ||
+        sprintf_s(configPath, "%ssora2looseload.ini", g_gameDir) < 0) {
         return false;
     }
+
+    return GetPrivateProfileIntA("Logging", "Enabled", 0, configPath) == 1;
+}
+
+bool InitLogFile() {
+    if (!IsLoggingEnabled())
+        return false;
 
     char logPath[MAX_PATH] = {};
     if (sprintf_s(logPath, "%ssora2looseload.log", g_gameDir) < 0)

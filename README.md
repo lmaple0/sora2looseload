@@ -45,14 +45,23 @@ provides the loose-file override layer.
 
 ## Verified targets
 
-Steam release executable checked on 2026-09-17:
+Steam release executable checked on 2026-09-19:
 
 ```text
 File:            sora_2nd.exe
+File version:    1.3.2.0
+SHA-256:         D8B2911D1576216BDC22D070550E4F531E105DE7ED2981885849669F4ACF8AAF
+Steam Build ID:  25386012
+Validation:      static signature/import checks; fresh runtime test pending
+```
+
+Previous Steam release target checked on 2026-09-17:
+
+```text
 File version:    1.3.1.0
 SHA-256:         485EFF96B37B11860F39C2D1A7390D6C91F4046E79519A85076E1CA4CDB6B616
 Steam Build ID:  25340742
-Validation:      static checks; prior build passed a user-confirmed runtime test
+Validation:      prior loader build passed a user-confirmed runtime test
 ```
 
 Historical Steam Demo executable checked on 2026-08-22:
@@ -111,10 +120,20 @@ Trails in the Sky 2nd Chapter\table_sc\t_item.tbl
 Trails in the Sky 2nd Chapter\script_sc\scena\example.dat
 ```
 
-To diagnose locale-prefixed paths, launch the game with
-`SORA2LOOSELOAD_LOG=1` and inspect `sora2looseload.log`. Logging is otherwise
-disabled and the file is not created. The loader passes loose-file bytes through
-unchanged; use the exact representation expected by the game for that resource.
+To diagnose locale-prefixed paths, put `sora2looseload.ini` next to
+`sora_2nd.exe` and set:
+
+```ini
+[Logging]
+Enabled=1
+```
+
+The default is `Enabled=0`, which does not create a log. The environment
+variable `SORA2LOOSELOAD_LOG` has higher priority when present: the exact value
+`1` enables logging, while `0`, an empty value, or any other value disables it.
+The log is written to `sora2looseload.log` in the game directory and replaced
+on each launch. The loader passes loose-file bytes through unchanged; use the
+exact representation expected by the game for that resource.
 
 ## Texture compatibility findings
 
