@@ -28,23 +28,27 @@ WINEDLLOVERRIDES="xinput1_4=n,b" %command%
 
 Keep file and directory names exactly as supplied by the mod.
 
-## Loose-file layout
+## Loose-file layout and languages
 
-Typical voice-mod paths are:
+Common loose-file directories are:
 
 ```text
 Trails in the Sky 2nd Chapter/
 ├── voice/
-├── table/
-├── table_sc/
-├── script/
-├── script_sc/
+├── table/       # Japanese
+├── table_en/    # English
+├── table_sc/    # Simplified Chinese
+├── script/      # Japanese
+├── script_en/   # English
+├── script_sc/   # Simplified Chinese
 ├── sora_2nd.exe
 └── xinput1_4.dll
 ```
 
-Only matching loose files are substituted. Missing files continue loading from
-the original PAC archives.
+Directories without a suffix are Japanese, `_en` is English, and `_sc` is
+Simplified Chinese. Install the files for the language you use; a mod does not
+need to provide every language directory. Only matching loose files are
+substituted. Missing files continue loading from the original PAC archives.
 
 ## Logging
 

@@ -26,22 +26,26 @@ WINEDLLOVERRIDES="xinput1_4=n,b" %command%
 
 文件及目录名称请保持与 MOD 完全一致。
 
-## MOD 目录结构
+## MOD 目录与语言后缀
 
-语音 MOD 通常使用以下目录：
+常见的松散文件目录如下：
 
 ```text
 Trails in the Sky 2nd Chapter/
 ├── voice/
-├── table/
-├── table_sc/
-├── script/
-├── script_sc/
+├── table/       # 日文
+├── table_en/    # 英文
+├── table_sc/    # 简体中文
+├── script/      # 日文
+├── script_en/   # 英文
+├── script_sc/   # 简体中文
 ├── sora_2nd.exe
 └── xinput1_4.dll
 ```
 
-只有存在的松散文件会覆盖同路径 PAC 资源；缺少的文件仍从原始 PAC 读取。
+无后缀目录代表日文，`_en` 代表英文，`_sc` 代表简体中文。只需部署当前游戏
+语言对应的文件，MOD 不必同时包含所有语言目录。只有存在的松散文件会覆盖
+同路径 PAC 资源；缺少的文件仍从原始 PAC 读取。
 
 ## 日志配置
 

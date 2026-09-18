@@ -27,21 +27,24 @@ WINEDLLOVERRIDES="xinput1_4=n,b" %command%
 
 Keep file and directory names exactly as supplied by the mod.
 
-## Loose-file layout
+## Loose-file layout and languages
 
 ```text
 Trails in the Sky 2nd Chapter/
 ├── voice/
-├── table/
-├── table_sc/
-├── script/
-├── script_sc/
+├── table/       # Japanese
+├── table_en/    # English
+├── table_sc/    # Simplified Chinese
+├── script/      # Japanese
+├── script_en/   # English
+├── script_sc/   # Simplified Chinese
 ├── sora_2nd.exe
 └── xinput1_4.dll
 ```
 
-Only matching loose files are substituted. Missing files continue loading from
-the original PAC archives.
+Directories without a suffix are Japanese, `_en` is English, and `_sc` is
+Simplified Chinese. Install only the files for the language you use. Missing
+files continue loading from the original PAC archives.
 
 ## Logging
 
