@@ -6,8 +6,9 @@ Microsoft Detours commit: adb07604aa56508448b95bf037c2a6d0d3b6831a
 Target Steam Build ID: 25386012
 Target sora_2nd.exe version: 1.3.2.0
 Target sora_2nd.exe SHA-256: D8B2911D1576216BDC22D070550E4F531E105DE7ED2981885849669F4ACF8AAF
-xinput1_4.dll SHA-256: DE3F2F043B4829FC0170F883E69EA345C033ED4FB8782EFD584802FF9DDA5D02
+xinput1_4.dll SHA-256: 295BE3F97CBECC9C4CC7BA5AFF51D27CD3358D8C4629E9576D0337DE1500368E
 Default file logging: disabled; use sora2looseload.ini or SORA2LOOSELOAD_LOG=1.
 EXE policy: keep the official Steam executable; do not combine with an embedded loose-loader patch.
-Validation: clean Release|x64 rebuild, unit tests, target signatures, and PE exports.
+Loose-file policy: language-specific mappings never fall back to unsuffixed loose files.
+Validation: clean Release|x64 rebuild, policy assertions, unit tests, target signatures, and PE exports.
 Runtime: a prior DLL passed the 1.3.1 release-game test; this 1.3.2 artifact requires a fresh in-game smoke test.

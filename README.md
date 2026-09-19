@@ -48,7 +48,9 @@ Trails in the Sky 2nd Chapter/
 Directories without a suffix are Japanese, `_en` is English, and `_sc` is
 Simplified Chinese. Install the files for the language you use; a mod does not
 need to provide every language directory. Only matching loose files are
-substituted. Missing files continue loading from the original PAC archives.
+substituted. A missing `_en` or `_sc` loose file does not fall back to the
+unsuffixed Japanese directory; the game continues loading its matching language
+resource from the original PAC archives.
 
 ## Logging
 

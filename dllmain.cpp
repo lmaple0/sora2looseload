@@ -136,6 +136,16 @@ bool TryLooseFile(const char* relativePath, char* fullPath, size_t fullPathSize,
     return true;
 }
 
+constexpr bool ShouldProbeStandardLoose(bool hasLocalizedMapping) {
+    // A language-specific mapping owns the lookup. If its loose file is absent,
+    // let the original function resolve the matching PAC entry instead of
+    // falling back to an unsuffixed loose file from another language.
+    return !hasLocalizedMapping;
+}
+
+static_assert(ShouldProbeStandardLoose(false));
+static_assert(!ShouldProbeStandardLoose(true));
+
 typedef __int64(__fastcall* InitialFileCheck_t)(__int64 a1, const char* a2, unsigned int a3, unsigned int a4, unsigned __int16 a5);
 typedef void(__fastcall* DebugLogger_t)(int a1, __int64 a2, __int64 a3, const char* a4, ...);
 typedef void(__fastcall* LocaleHandler_t)(__int64 mgr, char* dest, unsigned __int16* locale, char* src, int zero);
@@ -156,6 +166,7 @@ __int64 __fastcall InitialFileCheck(__int64 a1, const char* a2, unsigned int a3,
     static thread_local char safeFullPath[MAX_PATH];
     static thread_local char localizedPath[MAX_PATH];
     const char* finalPath = a2;
+    bool hasLocalizedMapping = false;
 
     const __int64 localeMgr = g_localeMgr.load(std::memory_order_acquire);
     if (oLocaleHandler && localeMgr)
@@ -163,7 +174,8 @@ __int64 __fastcall InitialFileCheck(__int64 a1, const char* a2, unsigned int a3,
         localizedPath[0] = '\0';
         oLocaleHandler(localeMgr, localizedPath, (unsigned __int16*)&a5, (char*)a2, 0);
 
-        if (localizedPath[0] && _stricmp(localizedPath, a2) != 0 &&
+        hasLocalizedMapping = localizedPath[0] && _stricmp(localizedPath, a2) != 0;
+        if (hasLocalizedMapping &&
             TryLooseFile(localizedPath, safeFullPath, sizeof(safeFullPath), "localized")) {
             finalPath = safeFullPath;
         } else if (!localizedPath[0]) {
@@ -171,7 +183,8 @@ __int64 __fastcall InitialFileCheck(__int64 a1, const char* a2, unsigned int a3,
         }
     }
 
-    if (finalPath == a2 && TryLooseFile(a2, safeFullPath, sizeof(safeFullPath), "standard")) {
+    if (finalPath == a2 && ShouldProbeStandardLoose(hasLocalizedMapping) &&
+        TryLooseFile(a2, safeFullPath, sizeof(safeFullPath), "standard")) {
         finalPath = safeFullPath;
     }
 
